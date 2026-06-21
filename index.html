@@ -1,0 +1,860 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- Apple Mobile Web App Meta Tags (PWA / iOS Optimization) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Eggquilibrium">
+    
+    <title>Eggquilibrium - AI Physics Simulator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0f172a;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            /* Support iOS Safe Areas for notched/home-indicator iPhones */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+        }
+        
+        .heading-font {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Smooth UI transitions */
+        .active-tab {
+            background-color: #38bdf8 !important;
+            color: #ffffff !important;
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.25);
+        }
+
+        /* Prevent scrolling bounce on iOS */
+        html, body {
+            position: fixed;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body class="text-slate-100 flex flex-col h-full w-full">
+
+    <!-- Top Status / Navigation Bar (Optimized for iPhone notch) -->
+    <header class="bg-slate-900/90 border-b border-slate-800/80 px-4 py-3 flex items-center justify-between z-40">
+        <div class="flex items-center gap-2">
+            <div class="bg-gradient-to-tr from-amber-400 to-amber-200 p-2 rounded-xl shadow-md">
+                <svg class="w-5 h-5 text-slate-900" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12,2C17.5,2 21,10 21,15C21,19 17.5,22 12,22C6.5,22 3,19 3,15C3,10 6.5,2" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-base font-bold heading-font tracking-tight text-white leading-tight">Eggquilibrium</h1>
+                <p class="text-[10px] text-slate-400">Gen-AI Reinforcement Sandbox</p>
+            </div>
+        </div>
+        
+        <!-- Live Counters -->
+        <div class="flex items-center gap-2">
+            <span class="text-xs font-mono bg-slate-800 border border-slate-700/60 px-2 py-1 rounded-lg">
+                Gen: <strong id="lbl-gen" class="text-sky-400">1</strong>
+            </span>
+            <span class="text-xs font-mono bg-slate-800 border border-slate-700/60 px-2 py-1 rounded-lg">
+                Best: <strong id="lbl-best" class="text-emerald-400">0.0s</strong>
+            </span>
+        </div>
+    </header>
+
+    <!-- Main Dynamic Container (Scrollable Panels) -->
+    <main class="flex-grow flex flex-col md:flex-row overflow-hidden relative">
+
+        <!-- Mobile Simulation Viewport (Top half on Mobile, Left half on Desktop) -->
+        <section class="flex-grow flex flex-col relative bg-slate-950/40">
+            <!-- Canvas container -->
+            <div class="flex-grow relative overflow-hidden">
+                <div class="absolute top-3 left-3 right-3 flex justify-between items-center z-10 pointer-events-none">
+                    <span id="lbl-mode" class="text-[10px] font-semibold bg-slate-900/90 text-sky-400 px-2.5 py-1 rounded-full border border-slate-850">
+                        <i class="fa-solid fa-microchip animate-pulse mr-1"></i> AI TRAINING RUN
+                    </span>
+                    <span class="text-xs font-mono bg-slate-900/90 text-white px-2.5 py-1 rounded-full border border-slate-850">
+                        Time: <strong id="lbl-timer" class="text-amber-400">0.0s</strong>
+                    </span>
+                </div>
+
+                <canvas id="canvas-game" class="w-full h-full block bg-gradient-to-b from-slate-950 to-slate-900"></canvas>
+
+                <!-- Swipe Gesture overlay hint for Mobile devices -->
+                <div class="absolute inset-x-0 bottom-16 flex justify-center pointer-events-none">
+                    <span id="drag-tip" class="text-[10px] bg-slate-900/80 text-slate-400 px-3 py-1 rounded-full hidden">
+                        <i class="fa-solid fa-arrows-left-right animate-bounce mr-1"></i> Drag / Slide finger to move platform
+                    </span>
+                </div>
+            </div>
+
+            <!-- Virtual iOS Touch Controller Bar -->
+            <div id="touch-controls" class="p-3 bg-slate-900/80 border-t border-slate-800/80 flex items-center gap-3 hidden">
+                <button id="btn-left" class="flex-grow active:scale-95 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700 py-3 rounded-2xl flex items-center justify-center gap-2 transition-all">
+                    <i class="fa-solid fa-arrow-left text-amber-400"></i>
+                    <span class="text-xs font-semibold text-slate-300">Tilt Left</span>
+                </button>
+                <button id="btn-right" class="flex-grow active:scale-95 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700 py-3 rounded-2xl flex items-center justify-center gap-2 transition-all">
+                    <span class="text-xs font-semibold text-slate-300">Tilt Right</span>
+                    <i class="fa-solid fa-arrow-right text-amber-400"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- Bottom Tab Sheet (Controls & Stats on Mobile, Right Panel on Desktop) -->
+        <section class="h-[220px] md:h-full md:w-[350px] flex flex-col bg-slate-900 border-t md:border-t-0 md:border-l border-slate-800">
+            
+            <!-- Tab Navigation Header -->
+            <div class="flex border-b border-slate-800 text-xs">
+                <button id="tab-brain-btn" class="flex-1 py-3 text-center font-semibold text-sky-400 border-b-2 border-sky-400">
+                    <i class="fa-solid fa-brain mr-1"></i> Brain
+                </button>
+                <button id="tab-settings-btn" class="flex-1 py-3 text-center font-semibold text-slate-400">
+                    <i class="fa-solid fa-sliders mr-1"></i> Config
+                </button>
+                <button id="tab-history-btn" class="flex-1 py-3 text-center font-semibold text-slate-400">
+                    <i class="fa-solid fa-chart-line mr-1"></i> Performance
+                </button>
+            </div>
+
+            <!-- Scrollable Tab Content Container -->
+            <div class="flex-grow overflow-y-auto p-4 space-y-4">
+                
+                <!-- Tab: Brain Inspector -->
+                <div id="tab-brain" class="space-y-3">
+                    <div class="bg-slate-950/60 p-2 rounded-xl border border-slate-800 relative">
+                        <canvas id="canvas-brain" class="w-full h-[120px] block"></canvas>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                        <div class="bg-slate-800/40 p-2 rounded-lg">
+                            <span class="text-slate-400 block">Agent State</span>
+                            <span id="txt-brain-state" class="font-semibold text-emerald-400 font-mono">FIRES ACTIVE</span>
+                        </div>
+                        <div class="bg-slate-800/40 p-2 rounded-lg">
+                            <span class="text-slate-400 block">Alive Agent Ratio</span>
+                            <span id="txt-alive-ratio" class="font-semibold text-purple-400 font-mono">20 / 20</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Configuration -->
+                <div id="tab-settings" class="hidden space-y-4">
+                    <!-- App Modes Toggle -->
+                    <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                        <button id="btn-mode-ai" class="flex-1 py-1.5 rounded-lg text-xs font-semibold active-tab transition-all">
+                            <i class="fa-solid fa-robot mr-1"></i> Training
+                        </button>
+                        <button id="btn-mode-manual" class="flex-1 py-1.5 rounded-lg text-xs font-semibold text-slate-400 transition-all">
+                            <i class="fa-solid fa-gamepad mr-1"></i> Interactive
+                        </button>
+                    </div>
+
+                    <!-- Speed & Parameters -->
+                    <div class="space-y-3">
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-400">Simulation Speed</span>
+                                <strong id="lbl-speed-val" class="text-sky-400">1x</strong>
+                            </div>
+                            <input type="range" id="opt-speed" min="1" max="5" value="1" class="w-full accent-sky-500">
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-400">Mutation Rate</span>
+                                <strong id="lbl-mutation-val" class="text-purple-400">15%</strong>
+                            </div>
+                            <input type="range" id="opt-mutation" min="1" max="50" value="15" class="w-full accent-purple-500">
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-400">Wind Interferences</span>
+                                <label class="relative inline-flex items-center cursor-pointer scale-90">
+                                    <input type="checkbox" id="opt-wind" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500"></div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="btn-reset" class="w-full py-2 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-red-500/10 transition-all flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-arrows-rotate"></i> Reset AI Evolution
+                    </button>
+                </div>
+
+                <!-- Tab: Performance Stats -->
+                <div id="tab-history" class="hidden space-y-3">
+                    <div class="bg-slate-950 p-2 rounded-xl border border-slate-850">
+                        <canvas id="canvas-chart" class="w-full h-[90px] block"></canvas>
+                    </div>
+                    <div id="list-history-log" class="text-[11px] font-mono text-slate-400 space-y-1 max-h-[80px] overflow-y-auto bg-slate-950/40 p-2 rounded-lg border border-slate-850">
+                        <span class="text-slate-500">// Evolution scores populate here</span>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Native App Core JS -->
+    <script>
+        // MOBILE-FRIENDLY CONFIGURATION STATE
+        const config = {
+            mode: 'ai',
+            simSpeed: 1,
+            popSize: 15, // Lowered slightly to guarantee 60fps on older iPhones
+            mutationRate: 0.15,
+            hiddenNodes: 5,
+            physics: { gravity: 9.8, offset: 35, windEnabled: false, currentWind: 0 },
+            rewards: { keepCentered: 0.4, keepVertical: 0.8 },
+            generation: 1,
+            bestFitness: 0,
+            chartHistory: []
+        };
+
+        // DOM Elements
+        const el = {
+            lblGen: document.getElementById('lbl-gen'),
+            lblBest: document.getElementById('lbl-best'),
+            lblMode: document.getElementById('lbl-mode'),
+            lblTimer: document.getElementById('lbl-timer'),
+            dragTip: document.getElementById('drag-tip'),
+            touchControls: document.getElementById('touch-controls'),
+            btnLeft: document.getElementById('btn-left'),
+            btnRight: document.getElementById('btn-right'),
+            btnModeAi: document.getElementById('btn-mode-ai'),
+            btnModeManual: document.getElementById('btn-mode-manual'),
+            btnReset: document.getElementById('btn-reset'),
+            
+            tabBrainBtn: document.getElementById('tab-brain-btn'),
+            tabSettingsBtn: document.getElementById('tab-settings-btn'),
+            tabHistoryBtn: document.getElementById('tab-history-btn'),
+            tabBrain: document.getElementById('tab-brain'),
+            tabSettings: document.getElementById('tab-settings'),
+            tabHistory: document.getElementById('tab-history'),
+            
+            txtBrainState: document.getElementById('txt-brain-state'),
+            txtAliveRatio: document.getElementById('txt-alive-ratio'),
+            listHistoryLog: document.getElementById('list-history-log'),
+            
+            optSpeed: document.getElementById('opt-speed'),
+            lblSpeedVal: document.getElementById('lbl-speed-val'),
+            optMutation: document.getElementById('opt-mutation'),
+            lblMutationVal: document.getElementById('lbl-mutation-val'),
+            optWind: document.getElementById('opt-wind'),
+
+            canvasGame: document.getElementById('canvas-game'),
+            canvasBrain: document.getElementById('canvas-brain'),
+            canvasChart: document.getElementById('canvas-chart')
+        };
+
+        const ctxGame = el.canvasGame.getContext('2d');
+        const ctxBrain = el.canvasBrain.getContext('2d');
+        const ctxChart = el.canvasChart.getContext('2d');
+
+        // TAB SHEET NAVIGATION SWITCH
+        const selectTab = (activeBtn, showTab) => {
+            [el.tabBrainBtn, el.tabSettingsBtn, el.tabHistoryBtn].forEach(b => {
+                b.classList.remove('text-sky-400', 'border-b-2', 'border-sky-400');
+                b.classList.add('text-slate-400');
+            });
+            [el.tabBrain, el.tabSettings, el.tabHistory].forEach(t => t.classList.add('hidden'));
+
+            activeBtn.classList.remove('text-slate-400');
+            activeBtn.classList.add('text-sky-400', 'border-b-2', 'border-sky-400');
+            showTab.classList.remove('hidden');
+            resizeCanvases();
+        };
+
+        el.tabBrainBtn.addEventListener('click', () => selectTab(el.tabBrainBtn, el.tabBrain));
+        el.tabSettingsBtn.addEventListener('click', () => selectTab(el.tabSettingsBtn, el.tabSettings));
+        el.tabHistoryBtn.addEventListener('click', () => selectTab(el.tabHistoryBtn, el.tabHistory));
+
+        // NEURAL NETWORK brain logic
+        class NeuralNet {
+            constructor(numInputs, numHidden, numOutputs, weights = null) {
+                this.numInputs = numInputs;
+                this.numHidden = numHidden;
+                this.numOutputs = numOutputs;
+
+                if (weights) {
+                    this.weightsIH = weights.ih;
+                    this.weightsHO = weights.ho;
+                    this.biasesH = weights.bh;
+                    this.biasesO = weights.bo;
+                } else {
+                    this.weightsIH = Array.from({ length: numHidden }, () => 
+                        Array.from({ length: numInputs }, () => Math.random() * 2 - 1)
+                    );
+                    this.weightsHO = Array.from({ length: numOutputs }, () => 
+                        Array.from({ length: numHidden }, () => Math.random() * 2 - 1)
+                    );
+                    this.biasesH = Array.from({ length: numHidden }, () => Math.random() * 2 - 1);
+                    this.biasesO = Array.from({ length: numOutputs }, () => Math.random() * 2 - 1);
+                }
+                this.inputActivations = [];
+                this.hiddenActivations = [];
+                this.outputActivations = [];
+            }
+
+            activate(x) { return 1 / (1 + Math.exp(-x)); }
+
+            predict(inputs) {
+                this.inputActivations = [...inputs];
+                const hidden = [];
+                for (let h = 0; h < this.numHidden; h++) {
+                    let sum = this.biasesH[h];
+                    for (let i = 0; i < this.numInputs; i++) sum += inputs[i] * this.weightsIH[h][i];
+                    hidden.push(this.activate(sum));
+                }
+                this.hiddenActivations = hidden;
+
+                const outputs = [];
+                for (let o = 0; o < this.numOutputs; o++) {
+                    let sum = this.biasesO[o];
+                    for (let h = 0; h < this.numHidden; h++) sum += hidden[h] * this.weightsHO[o][h];
+                    outputs.push(this.activate(sum));
+                }
+                this.outputActivations = outputs;
+                return outputs;
+            }
+
+            clone() {
+                return new NeuralNet(this.numInputs, this.numHidden, this.numOutputs, {
+                    ih: this.weightsIH.map(arr => [...arr]),
+                    ho: this.weightsHO.map(arr => [...arr]),
+                    bh: [...this.biasesH],
+                    bo: [...this.biasesO]
+                });
+            }
+
+            mutate(rate) {
+                const mut = (v) => Math.random() < rate ? v + (Math.random() * 2 - 1) * 0.4 : v;
+                this.weightsIH = this.weightsIH.map(row => row.map(mut));
+                this.weightsHO = this.weightsHO.map(row => row.map(mut));
+                this.biasesH = this.biasesH.map(mut);
+                this.biasesO = this.biasesO.map(mut);
+            }
+        }
+
+        // PHYSICAL EGG & PLATFORM AGENT
+        class EggAgent {
+            constructor(brain = null) {
+                this.x = 0;
+                this.v = 0;
+                this.a = 0;
+                this.angle = (Math.random() * 0.08 - 0.04);
+                this.angularVelocity = 0;
+                this.angularAcceleration = 0;
+                this.length = 120;
+                this.massEgg = 1.0;
+                this.massCart = 1.8;
+
+                this.brain = brain || new NeuralNet(4, config.hiddenNodes, 2);
+                this.fitness = 0;
+                this.alive = true;
+                this.timeAlive = 0;
+                this.color = this.getRandomVibrantColor();
+            }
+
+            getRandomVibrantColor() {
+                const hues = [30, 180, 260, 320];
+                return `hsla(${hues[Math.floor(Math.random() * hues.length)]}, 95%, 65%, 0.75)`;
+            }
+
+            update(actionForce, dt) {
+                if (!this.alive) return;
+                this.timeAlive += dt;
+
+                const g = config.physics.gravity;
+                const m = this.massEgg;
+                const M = this.massCart;
+                const l = this.length / 100;
+                const F = actionForce;
+                const wind = config.physics.windEnabled ? config.physics.currentWind * 0.05 : 0;
+
+                const sinA = Math.sin(this.angle);
+                const cosA = Math.cos(this.angle);
+
+                const temp = (F + wind + m * l * this.angularVelocity * this.angularVelocity * sinA) / (m + M);
+                const num = g * sinA - cosA * temp;
+                const den = l * (4/3 - (m * cosA * cosA) / (m + M));
+                
+                this.angularAcceleration = num / den;
+                this.a = temp - (l * this.angularAcceleration * cosA);
+
+                this.x += this.v * dt * 100;
+                this.v += this.a * dt;
+                this.angle += this.angularVelocity * dt;
+                this.angularVelocity += this.angularAcceleration * dt;
+
+                this.v *= 0.98;
+                this.angularVelocity *= 0.99;
+
+                // Score criteria
+                const angleBonus = Math.max(0, 1.0 - Math.abs(this.angle) * 2.5) * config.rewards.keepVertical;
+                const centerBonus = Math.max(0, 1.0 - (Math.abs(this.x)/300)) * config.rewards.keepCentered;
+                this.fitness += (angleBonus + centerBonus + 0.1) * dt;
+
+                // Threshold boundaries
+                if (Math.abs(this.angle) > (65 * Math.PI / 180) || Math.abs(this.x) > 240) {
+                    this.alive = false;
+                }
+            }
+
+            decide() {
+                const inputs = [this.angle, this.angularVelocity, this.x / 300, this.v / 5];
+                const output = this.brain.predict(inputs);
+                return (output[1] - output[0]) * 45.0;
+            }
+        }
+
+        // EVOLUTION CONTROLLER
+        class EvolutionManager {
+            constructor() {
+                this.population = [];
+                this.initPop();
+            }
+
+            initPop() {
+                this.population = [];
+                for (let i = 0; i < config.popSize; i++) {
+                    this.population.push(new EggAgent());
+                }
+            }
+
+            update(dt) {
+                let alive = 0;
+                this.population.forEach(agent => {
+                    if (agent.alive) {
+                        alive++;
+                        agent.update(agent.decide(), dt);
+                    }
+                });
+
+                if (alive === 0) {
+                    this.evolve();
+                }
+                return alive;
+            }
+
+            evolve() {
+                this.population.sort((a, b) => b.fitness - a.fitness);
+                const best = this.population[0];
+
+                config.bestFitness = Math.max(config.bestFitness, best.timeAlive);
+                el.lblBest.textContent = config.bestFitness.toFixed(1) + 's';
+
+                config.chartHistory.push(best.timeAlive);
+                if (config.chartHistory.length > 30) config.chartHistory.shift();
+
+                // Append local highscore storage for native app state preservation
+                localStorage.setItem('egg_best_score', config.bestFitness.toFixed(1));
+
+                // Log reports
+                const log = document.createElement('div');
+                log.className = "flex justify-between border-b border-slate-800/50 pb-0.5";
+                log.innerHTML = `<span>Gen ${config.generation}</span><span class="text-emerald-400 font-bold">${best.timeAlive.toFixed(1)}s</span>`;
+                el.listHistoryLog.prepend(log);
+                if (el.listHistoryLog.children.length > 20) el.listHistoryLog.removeChild(el.listHistoryLog.lastChild);
+
+                const nextGen = [];
+                // Elite preservation
+                nextGen.push(new EggAgent(best.brain.clone()));
+                if (this.population[1]) nextGen.push(new EggAgent(this.population[1].brain.clone()));
+
+                while (nextGen.length < config.popSize) {
+                    const pA = this.select();
+                    const pB = this.select();
+                    const childBrain = this.crossover(pA.brain, pB.brain);
+                    childBrain.mutate(config.mutationRate);
+                    nextGen.push(new EggAgent(childBrain));
+                }
+
+                this.population = nextGen;
+                config.generation++;
+                el.lblGen.textContent = config.generation;
+
+                drawChart();
+            }
+
+            select() {
+                let best = null;
+                for (let i = 0; i < 3; i++) {
+                    const r = this.population[Math.floor(Math.random() * this.population.length)];
+                    if (!best || r.fitness > best.fitness) best = r;
+                }
+                return best;
+            }
+
+            crossover(bA, bB) {
+                const child = bA.clone();
+                for (let h = 0; h < child.numHidden; h++) {
+                    for (let i = 0; i < child.numInputs; i++) {
+                        if (Math.random() > 0.5) child.weightsIH[h][i] = bB.weightsIH[h][i];
+                    }
+                }
+                return child;
+            }
+
+            getBest() {
+                let best = this.population[0];
+                this.population.forEach(p => {
+                    if (p.alive && p.fitness > best.fitness) best = p;
+                });
+                return best || this.population[0];
+            }
+        }
+
+        // GLOBALS INITIALIZERS
+        let evolver = new EvolutionManager();
+        let manualEgg = new EggAgent();
+        let manualForce = 0;
+        let lastTime = performance.now();
+
+        // Load Persistent Scores
+        const savedBest = localStorage.getItem('egg_best_score');
+        if (savedBest) {
+            config.bestFitness = parseFloat(savedBest);
+            el.lblBest.textContent = savedBest + 's';
+        }
+
+        // CONTROL HANDLERS (iOS Optimized)
+        const applyManualForce = (force) => { manualForce = force; };
+        const clearManualForce = () => { manualForce = 0; };
+
+        el.btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); applyManualForce(-40); });
+        el.btnLeft.addEventListener('touchend', clearManualForce);
+        el.btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); applyManualForce(40); });
+        el.btnRight.addEventListener('touchend', clearManualForce);
+
+        // Hardware Keyboard binds
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') applyManualForce(-40);
+            if (e.key === 'ArrowRight' || e.key === 'd') applyManualForce(40);
+        });
+        window.addEventListener('keyup', () => clearManualForce());
+
+        // Drag slide touch handle directly on canvas
+        let touchStartX = 0;
+        el.canvasGame.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        }, { passive: true });
+
+        el.canvasGame.addEventListener('touchmove', (e) => {
+            if (config.mode !== 'manual') return;
+            const currentX = e.touches[0].clientX;
+            const diff = currentX - touchStartX;
+            applyManualForce(Math.max(-45, Math.min(45, diff * 1.5)));
+        }, { passive: true });
+
+        el.canvasGame.addEventListener('touchend', () => {
+            if (config.mode === 'manual') clearManualForce();
+        });
+
+        // APP CONFIGURATIONS CONTROLS
+        el.btnModeAi.addEventListener('click', () => {
+            config.mode = 'ai';
+            el.btnModeAi.className = "flex-1 py-1.5 rounded-lg text-xs font-semibold active-tab transition-all";
+            el.btnModeManual.className = "flex-1 py-1.5 rounded-lg text-xs font-semibold text-slate-400 transition-all";
+            el.lblMode.innerHTML = `<i class="fa-solid fa-microchip animate-pulse mr-1"></i> AI TRAINING RUN`;
+            el.dragTip.classList.add('hidden');
+            el.touchControls.classList.add('hidden');
+        });
+
+        el.btnModeManual.addEventListener('click', () => {
+            config.mode = 'manual';
+            el.btnModeManual.className = "flex-1 py-1.5 rounded-lg text-xs font-semibold active-tab transition-all";
+            el.btnModeAi.className = "flex-1 py-1.5 rounded-lg text-xs font-semibold text-slate-400 transition-all";
+            el.lblMode.innerHTML = `<i class="fa-solid fa-gamepad mr-1 text-amber-400"></i> PLAY MODE`;
+            el.dragTip.classList.remove('hidden');
+            el.touchControls.classList.remove('hidden');
+            manualEgg = new EggAgent();
+        });
+
+        el.optSpeed.addEventListener('input', (e) => {
+            config.simSpeed = parseInt(e.target.value);
+            el.lblSpeedVal.textContent = config.simSpeed + 'x';
+        });
+
+        el.optMutation.addEventListener('input', (e) => {
+            config.mutationRate = parseInt(e.target.value) / 100;
+            el.lblMutationVal.textContent = e.target.value + '%';
+        });
+
+        el.optWind.addEventListener('change', (e) => {
+            config.physics.windEnabled = e.target.checked;
+        });
+
+        el.btnReset.addEventListener('click', () => {
+            localStorage.removeItem('egg_best_score');
+            config.generation = 1;
+            config.bestFitness = 0;
+            config.chartHistory = [];
+            el.lblGen.textContent = '1';
+            el.lblBest.textContent = '0.0s';
+            el.listHistoryLog.innerHTML = `<span class="text-slate-500">// Sim reset successfully</span>`;
+            evolver = new EvolutionManager();
+        });
+
+        // RENDERING LOOP
+        function step(now) {
+            let dt = (now - lastTime) / 1000;
+            if (dt > 0.1) dt = 0.1;
+            lastTime = now;
+
+            // Wind calculation
+            if (config.physics.windEnabled) {
+                config.physics.currentWind = Math.sin(now * 0.0025) * 6.0;
+            }
+
+            const loopRuns = config.mode === 'ai' ? config.simSpeed : 1;
+            for (let l = 0; l < loopRuns; l++) {
+                if (config.mode === 'ai') {
+                    const aliveCount = evolver.update(dt);
+                    el.txtAliveRatio.textContent = `${aliveCount} / ${config.popSize}`;
+                    const best = evolver.getBest();
+                    if (best) {
+                        el.lblTimer.textContent = best.timeAlive.toFixed(1) + 's';
+                    }
+                } else {
+                    if (manualEgg.alive) {
+                        manualEgg.update(manualForce, dt);
+                        el.lblTimer.textContent = manualEgg.timeAlive.toFixed(1) + 's';
+                        el.txtAliveRatio.textContent = "1 / 1 (You)";
+                    } else {
+                        manualEgg = new EggAgent();
+                    }
+                }
+            }
+
+            drawGame();
+            drawBrain();
+            requestAnimationFrame(step);
+        }
+
+        // CANVAS ADJUSTERS
+        function resizeCanvases() {
+            // High DPI support for Retina displays (iPhones)
+            const dpr = window.devicePixelRatio || 1;
+            
+            const handleResize = (canvas, context) => {
+                const rect = canvas.parentElement.getBoundingClientRect();
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.height}px`;
+                context.scale(dpr, dpr);
+            };
+
+            handleResize(el.canvasGame, ctxGame);
+            handleResize(el.canvasBrain, ctxBrain);
+            handleResize(el.canvasChart, ctxChart);
+            drawChart();
+        }
+
+        function drawGame() {
+            const w = el.canvasGame.width / (window.devicePixelRatio || 1);
+            const h = el.canvasGame.height / (window.devicePixelRatio || 1);
+            ctxGame.clearRect(0, 0, w, h);
+
+            const cX = w / 2;
+            const cY = h - 80;
+
+            // Draw Rails Track
+            ctxGame.strokeStyle = '#334155';
+            ctxGame.lineWidth = 4;
+            ctxGame.beginPath();
+            ctxGame.moveTo(cX - 240, cY + 14);
+            ctxGame.lineTo(cX + 240, cY + 14);
+            ctxGame.stroke();
+
+            // Draw track endpoints
+            ctxGame.fillStyle = '#ef4444';
+            ctxGame.fillRect(cX - 243, cY + 4, 6, 20);
+            ctxGame.fillRect(cX + 237, cY + 4, 6, 20);
+
+            // Draw active agents
+            if (config.mode === 'ai') {
+                evolver.population.forEach(agent => {
+                    if (agent.alive) drawAgentObject(agent, cX, cY, false);
+                });
+                const top = evolver.getBest();
+                if (top && top.alive) drawAgentObject(top, cX, cY, true);
+            } else {
+                drawAgentObject(manualEgg, cX, cY, true);
+            }
+        }
+
+        function drawAgentObject(agent, cX, cY, isBest) {
+            const sX = cX + agent.x;
+            const sY = cY;
+
+            // Platform Cart base
+            ctxGame.fillStyle = isBest ? '#38bdf8' : 'rgba(148, 163, 184, 0.2)';
+            ctxGame.strokeStyle = isBest ? '#ffffff' : 'rgba(255, 255, 255, 0.2)';
+            ctxGame.beginPath();
+            ctxGame.roundRect(sX - 25, sY, 50, 14, 4);
+            ctxGame.fill();
+            ctxGame.stroke();
+
+            // Wheels
+            ctxGame.fillStyle = '#020617';
+            ctxGame.beginPath();
+            ctxGame.arc(sX - 15, sY + 14, 5, 0, Math.PI * 2);
+            ctxGame.arc(sX + 15, sY + 14, 5, 0, Math.PI * 2);
+            ctxGame.fill();
+
+            // Egg Body geometry
+            const angleVal = agent.angle;
+            const L = agent.length;
+            const eggMidX = sX + (L * 0.55) * Math.sin(angleVal);
+            const eggMidY = sY - (L * 0.55) * Math.cos(angleVal);
+
+            ctxGame.save();
+            ctxGame.translate(eggMidX, eggMidY);
+            ctxGame.rotate(angleVal);
+
+            ctxGame.beginPath();
+            const eggW = 20;
+            const eggH = 28;
+            ctxGame.moveTo(0, -eggH);
+            ctxGame.bezierCurveTo(eggW * 1.1, -eggH, eggW * 1.1, eggH * 0.8, 0, eggH);
+            ctxGame.bezierCurveTo(-eggW * 1.1, eggH * 0.8, -eggW * 1.1, -eggH, 0, -eggH);
+            ctxGame.closePath();
+
+            // Glowing fills
+            if (isBest) {
+                const gradient = ctxGame.createRadialGradient(-3, -8, 3, 0, 0, eggH);
+                gradient.addColorStop(0, '#e0f2fe');
+                gradient.addColorStop(0.5, '#38bdf8');
+                gradient.addColorStop(1, '#0284c7');
+                ctxGame.fillStyle = gradient;
+            } else {
+                ctxGame.fillStyle = agent.color;
+            }
+            ctxGame.fill();
+            ctxGame.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctxGame.stroke();
+
+            // Red dot center of mass
+            const offset = (config.physics.offset / 100) * eggH;
+            ctxGame.fillStyle = '#ef4444';
+            ctxGame.beginPath();
+            ctxGame.arc(0, -offset, 3.5, 0, Math.PI * 2);
+            ctxGame.fill();
+
+            ctxGame.restore();
+        }
+
+        function drawBrain() {
+            const w = el.canvasBrain.width / (window.devicePixelRatio || 1);
+            const h = el.canvasBrain.height / (window.devicePixelRatio || 1);
+            ctxBrain.clearRect(0, 0, w, h);
+
+            const active = config.mode === 'manual' ? manualEgg : evolver.getBest();
+            if (!active || !active.brain) return;
+
+            const brain = active.brain;
+            const iX = 30, hX = w / 2, oX = w - 30;
+
+            const getY = (num, idx, padding = 15) => padding + idx * ((h - padding*2) / (num - 1 || 1));
+
+            // Weights
+            for (let hi = 0; hi < brain.numHidden; hi++) {
+                for (let ii = 0; ii < brain.numInputs; ii++) {
+                    const wt = brain.weightsIH[hi][ii];
+                    ctxBrain.strokeStyle = wt > 0 ? `rgba(56, 189, 248, ${Math.abs(wt)})` : `rgba(239, 68, 68, ${Math.abs(wt)})`;
+                    ctxBrain.lineWidth = Math.abs(wt) * 2;
+                    ctxBrain.beginPath();
+                    ctxBrain.moveTo(iX, getY(brain.numInputs, ii));
+                    ctxBrain.lineTo(hX, getY(brain.numHidden, hi));
+                    ctxBrain.stroke();
+                }
+            }
+
+            // Outer Nodes Draw circles
+            for (let ii = 0; ii < brain.numInputs; ii++) {
+                ctxBrain.fillStyle = '#38bdf8';
+                ctxBrain.beginPath();
+                ctxBrain.arc(iX, getY(brain.numInputs, ii), 6, 0, Math.PI * 2);
+                ctxBrain.fill();
+            }
+            for (let hi = 0; hi < brain.numHidden; hi++) {
+                ctxBrain.fillStyle = '#a855f7';
+                ctxBrain.beginPath();
+                ctxBrain.arc(hX, getY(brain.numHidden, hi), 6, 0, Math.PI * 2);
+                ctxBrain.fill();
+            }
+            for (let oi = 0; oi < brain.numOutputs; oi++) {
+                ctxBrain.fillStyle = '#10b981';
+                ctxBrain.beginPath();
+                ctxBrain.arc(oX, getY(brain.numOutputs, oi, 30), 6, 0, Math.PI * 2);
+                ctxBrain.fill();
+            }
+        }
+
+        function drawChart() {
+            const w = el.canvasChart.width / (window.devicePixelRatio || 1);
+            const h = el.canvasChart.height / (window.devicePixelRatio || 1);
+            ctxChart.clearRect(0, 0, w, h);
+
+            if (config.chartHistory.length < 2) return;
+
+            const max = Math.max(...config.chartHistory);
+            const min = 0;
+
+            ctxChart.strokeStyle = '#38bdf8';
+            ctxChart.lineWidth = 2.5;
+            ctxChart.beginPath();
+
+            const sX = w / (config.chartHistory.length - 1);
+            const sY = (h - 20) / (max - min || 1);
+
+            config.chartHistory.forEach((score, idx) => {
+                const x = idx * sX;
+                const y = h - 10 - (score - min) * sY;
+                if (idx === 0) ctxChart.moveTo(x, y);
+                else ctxChart.lineTo(x, y);
+            });
+            ctxChart.stroke();
+        }
+
+        // INITIALIZE APP
+        window.addEventListener('resize', resizeCanvases);
+        resizeCanvases();
+        requestAnimationFrame(step);
+    </script>
+</body>
+</html>
+
+```
